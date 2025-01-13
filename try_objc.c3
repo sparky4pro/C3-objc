@@ -1,11 +1,15 @@
 // try_objc.c3
+// compile with:
+// c3c compile --target macos-aarch64 try_objc.c3 objc_runtime.c3
 module try_objc;
 
 import std::io;
+import std::os::macos::objc;
 import objc_runtime;
 
-// Define nil
-//const void* NIL = null;
+// One cannot just call msgSend...
+// Need to make a function prototype:
+def CallInit = fn void(void*, void*, NSRect, int, int, char);
 
 enum WindowStyleMask : (ulong val)
 {
@@ -23,15 +27,7 @@ enum WindowStyleMask : (ulong val)
 	NONACTIVATING_PANEL       = 1 << 7,
 	HUD_WINDOW                = 1 << 13
 }
-/*
-// Define rect structure for window initialization
-struct NSRect {
-    double x;      // Changed to double for CGFloat compatibility
-    double y;
-    double width;
-    double height;
-}
-*/
+
 // Define rect structure for window initialization
 struct NSRect {
     NSPoint origin;
@@ -88,33 +84,14 @@ fn void main() {
     objc_runtime::objc_SetProperty(app, "delegate", delegate.delegate_instance);
 
     // Create window rect (using CGFloat compatible values)
-    //NSRect windowRect = {100.0, 100.0, 400.0, 300.0};
-
-    // Main window creation part
     NSRect windowRect;
     windowRect.origin = NSPoint{200.0, 200.0};
-    windowRect.size = NSSize{400.0, 300.0};
+    windowRect.size   = NSSize{400.0, 300.0};
 
     // Create window with proper style mask
     ulong window_style = WindowStyleMask.TITLED.val | WindowStyleMask.CLOSABLE.val |
                     WindowStyleMask.MINIATURIZABLE.val | WindowStyleMask.RESIZABLE.val;
     ulong backing_store = 2; // NSBackingStoreBuffered
-
-
-    // Set up window style mask
-    // Window style mask constants
-    //const int NSWINDOW_STYLE_MASK_BORDERLESS     = 0;
-    //const int NSWINDOW_STYLE_MASK_TITLED         = 1;
-    //const int NSWINDOW_STYLE_MASK_CLOSABLE       = 2;
-    //const int NSWINDOW_STYLE_MASK_MINIATURIZABLE = 4;
-    //const int NSWINDOW_STYLE_MASK_RESIZABLE      = 8;
-
-    //long styleMask = (NSWINDOW_STYLE_MASK_TITLED | NSWINDOW_STYLE_MASK_CLOSABLE | NSWINDOW_STYLE_MASK_MINIATURIZABLE | NSWINDOW_STYLE_MASK_RESIZABLE);
-    //ulong styleMask = WindowStyleMask.CLOSABLE.val | WindowStyleMask.MINIATURIZABLE.val | WindowStyleMask.TITLED.val | WindowStyleMask.RESIZABLE.val;
-
-    // Create a window
-//    void* windowClass = objc_runtime::objc_GetClass(objc_runtime::nsWindowClassName);
-//    void* window = objc_runtime::objc_Alloc(windowClass);
 
     // Create a window with basic style
     void* windowClass = objc_runtime::objc_GetClass(objc_runtime::nsWindowClassName);
@@ -130,47 +107,17 @@ fn void main() {
         return;
     }
 
-//    int styleMask = NSWindowStyle.TITLED | NSWindowStyle.CLOSABLE |
-//                NSWindowStyle.MINIATURIZABLE | NSWindowStyle.RESIZABLE;
-
-    // Initialize with borderless style
-    //int styleMask = NSWINDOW_STYLE_MASK_BORDERLESS;
     io::printfn("Using style mask: %d", window_style);//styleMask);
-/*
-    objc_runtime::objc_SendMsg4(window, "initWithContentRect:styleMask:backing:defer:",
-    //objc_runtime::objc_SendMsg(window, "initWithContentRect:styleMask:backing:defer:",
-        &windowRect,
-        (void*)(ulong)styleMask,  // Cast to void* after ulong
-        (void*)(ulong)2,          // NSBackingStoreBuffered
-        (void*)(ulong)0);         // Don't defer
-*/
-    objc_runtime::objc_SendMsg4(window, "initWithContentRect:styleMask:backing:defer:",
-        &windowRect,
-        (void*)window_style,    // Pass style directly
-        (void*)backing_store,   // Pass backing store directly
-        (void*)0);              // Don't defer
 
-    // Initialize window with correct parameters
-//    objc_runtime::objc_SendMsg4(window, "initWithContentRect:styleMask:backing:defer:", &windowRect, (void*)styleMask, (void*)2, (void*)0);
+    void* sel = objc_runtime::sel_registerName("initWithContentRect:styleMask:backing:defer:");
+    ((CallInit)&objc_runtime::objc_msgSend)(window, sel, windowRect, (int)window_style, (int)backing_store, (char)false);
 
-    // Create an NSString for the title
-//    void* nsStringClass = objc_runtime::objc_GetClass("NSString");
-//    void* titleStr = objc_runtime::objc_SendMsg1(nsStringClass, "stringWithUTF8String:", "C3 Window");
-/*
-    void* titleStr = objc_runtime::createNSString("C3 Window");
-
-    if (titleStr == null) {
-        io::printn("Failed to create window title string");
-        return;
-    }
-*/
     // Set window title using NSString
     //objc_runtime::objc_SendMsg1(window, "setTitle:", titleStr);
 
     // Show the window
     objc_runtime::objc_SendMsg1(window, "makeKeyAndOrderFront:", null);
-    objc_runtime::objc_SendMsg1(window, "show:", null);
-
+ 
     // Activate the application
     objc_runtime::objc_SendMsg1(app, "activateIgnoringOtherApps:", (void*)1);
 
