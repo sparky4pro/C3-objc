@@ -49,15 +49,51 @@ struct AppDelegate {
     void* delegate_instance;
 }
 
-// Function to handle application launch
-fn void applicationDidFinishLaunching(AppDelegate* delegate, void* notification) {
-    io::printn("Application has launched!");
+// Function types for delegate methods
+def AppShouldTerminate = fn char(void*, void*, void*);
+def AppDidFinishLaunching = fn void(void*, void*, void*);
+
+// Delegate method implementations
+fn char appDelegate_applicationShouldTerminateAfterLastWindowClosed(void* self, void* sel, void* app) {
+    io::printn("Window closed - should terminate app");
+    return 1;  // YES in Objective-C
+}
+
+fn void appDelegate_applicationDidFinishLaunching(void* self, void* sel, void* notification) {
+    io::printn("Application launched successfully!");
 }
 
 // Function to create and initialize delegate
-fn AppDelegate createAppDelegate() {
-    AppDelegate delegate = {null};
-    return delegate;
+fn void* createAppDelegate() {
+    // Define our delegate methods
+    Method[2] methods;
+    methods[0] = Method {
+        .name = objc_runtime::APPLICATION_SHOULD_TERMINATE_AFTER_LAST_WINDOW_CLOSED_SEL,
+        .types = "c@:@",  // BOOL (id self, SEL _cmd, id app)
+        .imp = &appDelegate_applicationShouldTerminateAfterLastWindowClosed
+    };
+    methods[1] = Method {
+        .name = objc_runtime::APPLICATION_DID_FINISH_LAUNCHING_SEL,
+        .types = "v@:@",  // void (id self, SEL _cmd, id notification)
+        .imp = &appDelegate_applicationDidFinishLaunching
+    };
+
+    // Register our custom delegate class
+    char* delegateClassName = "CustomAppDelegate";
+    if (!objc_runtime::registerDelegateClass(delegateClassName, &methods[0], 2)) {
+        io::printn("Failed to register delegate class!");
+        return null;
+    }
+
+    // Create an instance of our delegate
+    void* delegateClass = objc_runtime::objc_GetClass(delegateClassName);
+    if (delegateClass == null) {
+        io::printn("Failed to get delegate class!");
+        return null;
+    }
+
+    void* delegate = objc_runtime::objc_Alloc(delegateClass);
+    return objc_runtime::objc_Init(delegate);
 }
 
 // Main function
@@ -65,23 +101,37 @@ fn void main() {
     io::printn("main function has launched!");
 
     // Initialize the Objective-C runtime
-    objc_runtime::initializeObjectiveCRuntime();
+    if (objc_runtime::initializeObjectiveCRuntime() != objc_runtime::OBJC_RUNTIME_SUCCESS) {
+        io::printn("Failed to initialize Objective-C runtime!");
+        return;
+    }
+
+    // Create an autorelease pool
+    void* pool = objc_runtime::createAutoreleasePool();
+    if (pool == null) {
+        io::printn("Failed to create autorelease pool!");
+        return;
+    }
 
     // Get shared application instance
     void* app = objc_runtime::nsApp_sharedApplication();
     if (app == null) {
-        io::printn("Failed to get shared application!");
+        io::printn("Failed to create shared application!");
         return;
     }
 
     // Create an instance of AppDelegate
-    AppDelegate delegate = createAppDelegate();
-    void* delegateClass = objc_runtime::objc_GetClass(objc_runtime::nsApplicationDelegateClassName);
-    delegate.delegate_instance = objc_runtime::objc_Alloc(delegateClass);
-    objc_runtime::objc_Init(delegate.delegate_instance);
+    void* delegate = createAppDelegate();
+    if (delegate == null) {
+        io::printn("Failed to create delegate!");
+        return;
+    }
 
-    // Set the delegate for the application
-    objc_runtime::objc_SetProperty(app, "delegate", delegate.delegate_instance);
+    // Set the delegate for the application using our helper function
+    objc_runtime::setAppDelegate(app, delegate);
+    
+    // Make sure the application is activated
+    objc_runtime::objc_SendMsg1(app, "activateIgnoringOtherApps:", (void*)1);
 
     // Create window rect (using CGFloat compatible values)
     NSRect windowRect;
@@ -107,22 +157,34 @@ fn void main() {
         return;
     }
 
-    io::printfn("Using style mask: %d", window_style);//styleMask);
+    io::printfn("Using style mask: %d", window_style);
 
     void* sel = objc_runtime::sel_registerName("initWithContentRect:styleMask:backing:defer:");
     ((CallInit)&objc_runtime::objc_msgSend)(window, sel, windowRect, (int)window_style, (int)backing_store, (char)false);
 
-    // Set window title using NSString
-    //objc_runtime::objc_SendMsg1(window, "setTitle:", titleStr);
+    // Create window title
+    void* titleStr = objc_runtime::createNSString("C3 Window");
+    if (titleStr == null) {
+        io::printn("Failed to create window title!");
+        return;
+    }
+    
+    // Set window title
+    objc_runtime::objc_SendMsg1(window, "setTitle:", titleStr);
+
+    // Release the title string since the window retains it
+    objc_runtime::objc_release(titleStr);
 
     // Show the window
     objc_runtime::objc_SendMsg1(window, "makeKeyAndOrderFront:", null);
- 
-    // Activate the application
-    objc_runtime::objc_SendMsg1(app, "activateIgnoringOtherApps:", (void*)1);
 
     io::printn("About to run the application!");
     // Run the application
-    objc_runtime::objc_SendMsg0(app, "run");
+    objc_runtime::objc_SendMsg(app, "run");
     io::printn("main function after run, ending!");
+
+    // Clean up
+    if (pool != null) {
+        objc_runtime::objc_release(pool);
+    }
 }
