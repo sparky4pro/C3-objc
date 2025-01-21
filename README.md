@@ -6,4 +6,5 @@ This is the command line I use:
 
 Window shows up and application delegate works.
 
-WIP!
+This is an example how it can be done..
+Further development will be in C3-Foundation, as more and more files would need to be added.
